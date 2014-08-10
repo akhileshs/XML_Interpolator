@@ -2,9 +2,15 @@ package customContextLift
 import xml._
 import scala.reflect.api.Universe
 import reflect.macros.blackbox.Context
+import org.w3c.dom._
+import javax.xml.parsers._
+import javax.xml.transform._
 
 trait XMLContext {
   type Node
+  type MetaData
+  type NamespaceBinding
+  type NodeList
   
   type Text <: Node
   val Text: TextCtor
@@ -51,14 +57,18 @@ trait XMLContext {
   type Elem <: Node
   val Elem: ElemCtor
   trait ElemCtor {
-    def apply(prefix: String, label: String, attributes: xml.MetaData, scope: NamespaceBinding, minimize: Boolean, child: Node*): Node
-    def unapplySeq(n: Node): Option[(String, String, xml.MetaData, xml.NamespaceBinding, Boolean, Seq[scala.xml.Node])]
+    def apply(prefix: String, label: String, attributes: MetaData, scope: NamespaceBinding, minimize: Boolean, child: NodeList): Node
+    def unapplySeq(n: Node): Option[(String, String, MetaData, NamespaceBinding, Boolean, NodeList)]
   }
+  
 }
 
 object XMLContext {
-  implicit object ScalaXML extends XMLContext {
+  implicit object ScalaXMLNode extends XMLContext {
     type Node = scala.xml.Node
+    type MetaData = scala.xml.MetaData
+    type NamespaceBinding = scala.xml.NamespaceBinding
+    type NodeList = Seq[Node]
     
     type Text = scala.xml.Text
     val Text: TextCtor = ScalaTextCtor
@@ -120,16 +130,101 @@ object XMLContext {
       }
     }
 
+    
     type Elem = scala.xml.Elem
     val Elem: ElemCtor = ScalaElemCtor
     object ScalaElemCtor extends ElemCtor {
-      def apply(prefix: String, label: String, attributes: xml.MetaData, scope: xml.NamespaceBinding, minimize: Boolean, child: Node*) = new
+      def apply(prefix: String, label: String, attributes: xml.MetaData, scope: xml.NamespaceBinding, minimize: Boolean, child: NodeList) = new
       _root_.scala.xml.Elem(prefix, label, attributes, _root_.scala.xml.TopScope, minimize, child: _*)
       def unapplySeq(n: xml.Node) = {
         n match {
           case _: SpecialNode | _: Group  => None
           case _: xml.Elem                => Some((n.prefix, n.label, n.attributes, n.scope, n.child.isEmpty, n.child))
         }
+      }
+    }
+
+  }
+
+  
+  implicit object DOMNode extends XMLContext {
+    type Node = org.w3c.dom.Node
+    type MetaData = org.w3c.dom.NamedNodeMap
+    type NamespaceBinding = String
+    type NodeList = org.w3c.dom.NodeList
+
+    val factory = DocumentBuilderFactory.newInstance()
+    val builder = factory.newDocumentBuilder()
+    val document = builder.newDocument()
+
+    type Text = org.w3c.dom.Text
+    val Text: TextCtor = DomTextCtor
+    object DomTextCtor extends TextCtor {
+      def apply(data: String) = document.createTextNode(data)
+      def unapply(t: Any) = t match {
+        case s: Text => Some(s.getNodeValue)
+        case _       => None
+      }
+    }
+
+    type Comment = org.w3c.dom.Comment
+    val Comment: CommentCtor = DomCommentCtor
+    object DomCommentCtor extends CommentCtor {
+      def apply(comment: String) = document.createComment(comment)
+      def unapply(c: Any) = c match {
+        case x: Comment => Some(x.getNodeValue)
+        case _          => None
+      }
+    }
+
+    type EntityRef = org.w3c.dom.EntityReference
+    val EntityRef: EntityRefCtor = DomEntityRefCtor
+    object DomEntityRefCtor extends EntityRefCtor {
+      def apply(entityName: String) = document.createEntityReference(entityName)
+      def unapply(e: Any) = e match {
+        case er: EntityRef => Some(er.getNodeName)
+        case _             => None
+      }
+    }
+
+    type ProcInstr = org.w3c.dom.ProcessingInstruction
+    val ProcInstr: ProcInstrCtor = DomProcInstrCtor
+    object DomProcInstrCtor extends ProcInstrCtor {
+      def apply(target: String, procText: String) = document.createProcessingInstruction(target, procText)
+      def unapply(p: Any) = p match {
+        case pi: ProcInstr => Some((pi.getNodeName, pi.getNodeValue))
+        case _             => None
+      }
+    }
+
+    type Unparsed = org.w3c.dom.CDATASection
+    val Unparsed: UnparsedCtor = DomUnparsedCtor
+    object DomUnparsedCtor extends UnparsedCtor {
+      def apply(data: String) = document.createCDATASection(data)
+      def unapply(x: Any) = x match {
+        case u: Unparsed => Some(u.getNodeValue)
+        case _           => None
+      }
+    }
+
+    type PCData = org.w3c.dom.CDATASection
+    val PCData: PCDataCtor = DomPCDataCtor
+    object DomPCDataCtor extends PCDataCtor {
+      def apply(data: String) = document.createCDATASection(data)
+      def unapply(x: Any) = x match {
+        case pc: PCData => Some(pc.getNodeValue)
+        case _          => None
+      }
+    }
+
+    type Elem = org.w3c.dom.Element
+    val Elem: ElemCtor = DomElemCtor
+    object DomElemCtor extends ElemCtor {
+      def apply(prefix: String, label: String, attributes: MetaData, scope: NamespaceBinding, minimize: Boolean, child: NodeList) =
+        document.createElement(label)
+      def unapplySeq(n: Node) = n match {
+        case _: Node => Some((n.getPrefix, n.getNodeName, n.getAttributes, n.getNamespaceURI, n.hasChildNodes, n.getChildNodes)) //check this part
+        case _       => None          
       }
     }
   }
