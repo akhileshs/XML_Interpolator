@@ -5,8 +5,11 @@ import customContextLift._
 import PatternLiftables.MacroPLiftables
 import java.util.UUID.randomUUID
 import scala.xml._
+import org.w3c.dom._
+import javax.xml.parsers._
+import javax.xml.transform._
 
-package object xmlquote { 
+package object xmlquote {
   implicit class XMLQuote(val sc: StringContext) { 
     object xml {
       def apply[T](args: T*)(implicit ctx: XMLContext): ctx.Node = macro XMLQuoteImpl.apply
@@ -16,6 +19,174 @@ package object xmlquote {
 }
 
 package xmlquote {
+  object ScalaXMLPackage {
+    implicit object ScalaXML extends XMLContext {
+      type Node = scala.xml.Node
+      type MetaData = scala.xml.MetaData
+      type NamespaceBinding = scala.xml.NamespaceBinding
+      
+      type Text = scala.xml.Text
+      val Text: TextCtor = ScalaTextCtor
+      object ScalaTextCtor extends TextCtor {
+        def apply(data: String) = new _root_.scala.xml.Text(data)
+        def unapply(t: Any) = t match {
+            case s: Text => Some(s.data)
+            case _       => None
+          }
+      }
+
+      type Comment = scala.xml.Comment
+      val Comment: CommentCtor = ScalaCommentCtor
+      object ScalaCommentCtor extends CommentCtor {
+        def apply(comment: String) = new _root_.scala.xml.Comment(comment)
+        def unapply(c: Any) = c match {
+          case x: Comment => Some(x.commentText)
+          case _          => None
+        }
+      }
+      
+      type EntityRef = scala.xml.EntityRef
+      val EntityRef: EntityRefCtor = ScalaEntityRefCtor
+      object ScalaEntityRefCtor extends EntityRefCtor {
+        def apply(entityName: String) = new _root_.scala.xml.EntityRef(entityName)
+        def unapply(e: Any) = e match {
+          case er: EntityRef => Some(er.entityName)
+          case _             => None
+        }
+      }
+
+      type ProcInstr = scala.xml.ProcInstr
+      val ProcInstr: ProcInstrCtor = ScalaProcInstrCtor
+      object ScalaProcInstrCtor extends ProcInstrCtor {
+        def apply(target: String, procText: String) = new _root_.scala.xml.ProcInstr(target, procText)
+        def unapply(pi: Any) = pi match {
+          case p: ProcInstr => Some((p.target, p.proctext))
+          case _            => None
+        }
+      }
+
+      type Unparsed = scala.xml.Unparsed
+      val Unparsed: UnparsedCtor = ScalaUnparsedCtor
+      object ScalaUnparsedCtor extends UnparsedCtor {
+        def apply(data: String) = new _root_.scala.xml.Unparsed(data)
+        def unapply(x: Any) = x match {
+          case u: Unparsed => Some(u.data)
+          case _           => None
+        }
+      }
+
+      type PCData = scala.xml.PCData
+      val PCData: PCDataCtor = ScalaPCDataCtor
+      object ScalaPCDataCtor extends PCDataCtor {
+        def apply(data: String) = new _root_.scala.xml.PCData(data)
+        def unapply(other: Any) = other match {
+          case x: PCData => Some(x.data)
+          case _         => None
+        }
+      }
+
+      type Elem = scala.xml.Elem
+      val Elem: ElemCtor = ScalaElemCtor
+      object ScalaElemCtor extends ElemCtor {
+        def apply(prefix: String, label: String, attributes: xml.MetaData, scope: xml.NamespaceBinding, minimize: Boolean, child: Node*) = 
+          new _root_.scala.xml.Elem(prefix, label, attributes, _root_.scala.xml.TopScope, minimize, child: _*)
+
+        def unapplySeq(n: xml.Node) = {
+          n match {
+            case _: SpecialNode | _: Group  => None
+            case _: xml.Elem                => Some((n.prefix, n.label, n.attributes, n.scope, n.child.isEmpty, n.child))
+          }
+        }
+      }
+    }
+  }
+  
+  object DOMPackage {
+    implicit object DOMNode extends XMLContext {
+      type Node = org.w3c.dom.Node
+      type MetaData = org.w3c.dom.NamedNodeMap
+      type NamespaceBinding = xml.NamespaceBinding
+      type NodeList = org.w3c.dom.NodeList
+
+      val factory = DocumentBuilderFactory.newInstance()
+      val builder = factory.newDocumentBuilder()
+      val document = builder.newDocument()
+
+      type Text = org.w3c.dom.Text
+      val Text: TextCtor = DomTextCtor
+      object DomTextCtor extends TextCtor {
+        def apply(data: String) = document.createTextNode(data)
+        def unapply(t: Any) = t match {
+          case s: Text => Some(s.getNodeValue)
+          case _       => None
+        }
+      }
+
+      type Comment = org.w3c.dom.Comment
+      val Comment: CommentCtor = DomCommentCtor
+      object DomCommentCtor extends CommentCtor {
+        def apply(comment: String) = document.createComment(comment)
+        def unapply(c: Any) = c match {
+          case x: Comment => Some(x.getNodeValue)
+          case _          => None
+        }
+      }
+
+      type EntityRef = org.w3c.dom.EntityReference
+      val EntityRef: EntityRefCtor = DomEntityRefCtor
+      object DomEntityRefCtor extends EntityRefCtor {
+        def apply(entityName: String) = document.createEntityReference(entityName)
+        def unapply(e: Any) = e match {
+          case er: EntityRef => Some(er.getNodeName)
+          case _             => None
+        }
+      }
+
+      type ProcInstr = org.w3c.dom.ProcessingInstruction
+      val ProcInstr: ProcInstrCtor = DomProcInstrCtor
+      object DomProcInstrCtor extends ProcInstrCtor {
+        def apply(target: String, procText: String) = document.createProcessingInstruction(target, procText)
+        def unapply(p: Any) = p match {
+          case pi: ProcInstr => Some((pi.getNodeName, pi.getNodeValue))
+          case _             => None
+        }
+      }
+
+      type Unparsed = org.w3c.dom.CDATASection
+      val Unparsed: UnparsedCtor = DomUnparsedCtor
+      object DomUnparsedCtor extends UnparsedCtor {
+        def apply(data: String) = document.createCDATASection(data)     //check this part
+        def unapply(x: Any) = x match {
+          case u: Unparsed => Some(u.getNodeValue)
+          case _           => None
+        }
+      }
+
+      type PCData = org.w3c.dom.CDATASection
+      val PCData: PCDataCtor = DomPCDataCtor
+      object DomPCDataCtor extends PCDataCtor {
+        def apply(data: String) = document.createCDATASection(data)     //check this part
+        def unapply(x: Any) = x match {
+          case pc: PCData => Some(pc.getNodeValue)
+          case _          => None
+        }
+      }
+
+      type Elem = org.w3c.dom.Element
+      val Elem: ElemCtor = DomElemCtor
+      object DomElemCtor extends ElemCtor {
+        def apply(prefix: String, label: String, attributes: xml.MetaData, scope: NamespaceBinding, minimize: Boolean, child:
+          scala.xml.Node*) = {
+          document.createElement(label)
+        }
+
+        def unapplySeq(n: Node) = n match {
+          case _: Node => Some((n.getPrefix, n.getNodeName, null, xml.TopScope, n.hasChildNodes, null)) //check this part
+          case _       => None          
+        }
+      }
+    }
+  }
   private[xmlquote] class XMLQuoteImpl(val c: blackbox.Context) extends MacroLiftables { import c.universe._   
     
     lazy val sessionSuffix = randomUUID().toString.replace("-", "").substring(0, 8)
