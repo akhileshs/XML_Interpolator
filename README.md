@@ -10,6 +10,16 @@ Open the console in sbt, and import the required package.
 ```scala
 import xmlquote._
 ```
+
+To create regular Scala XML Nodes, import only the Scala XML Package
+```scala
+import ScalaXMLPackage._
+```
+To create DOM Nodes, 
+```scala
+import DOMPackage._
+```
+
 Since this package aims to replace existing XML literal support, it provides all the currently existing features as well. So, currently in Scala, something like
 ```scala
 val name = "John"
